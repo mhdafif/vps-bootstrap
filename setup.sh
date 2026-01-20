@@ -74,23 +74,44 @@ if [[ "${INSTALL_FAIL2BAN}" == "true" ]]; then
   apt install -y fail2ban
 fi
 
-# ========= CREATE USER =========
+# ========= CREATE USER + SUDO =========
+USER_CREATED=false
 if id "${USERNAME}" &>/dev/null; then
   log "User ${USERNAME} already exists"
 else
-  log "Creating user ${USERNAME} (SSH-key login recommended)..."
-  # Create user without setting a password automatically
+  log "Creating user ${USERNAME}..."
   adduser --disabled-password --gecos "" "${USERNAME}"
+  USER_CREATED=true
 fi
 
 # Ensure sudo group membership
 usermod -aG sudo "${USERNAME}"
 
-# ========= SET PASSWORD FOR SUDO =========
-# This is the critical piece to prevent lockout while still using sudo with password.
-log "Setting a password for ${USERNAME} (used for sudo)."
-log "You will be prompted to type a new password now."
-passwd "${USERNAME}"
+# ========= SET PASSWORD ONLY WHEN NEEDED =========
+# We only prompt for password if:
+# - user was just created, OR
+# - the account password is still locked/empty in /etc/shadow
+#
+# This prevents asking for a new password on every rerun.
+SHADOW_STATUS="$(passwd -S "${USERNAME}" 2>/dev/null | awk "{print \$2}")" || SHADOW_STATUS=""
+# Common statuses:
+#  P = password set
+#  L = locked
+#  NP = no password
+NEED_PASSWORD=false
+if [[ "${USER_CREATED}" == "true" ]]; then
+  NEED_PASSWORD=true
+elif [[ "${SHADOW_STATUS}" == "L" || "${SHADOW_STATUS}" == "NP" ]]; then
+  NEED_PASSWORD=true
+fi
+
+if [[ "${NEED_PASSWORD}" == "true" ]]; then
+  log "Setting a password for ${USERNAME} (required for sudo)."
+  log "You will be prompted to type a new password now."
+  passwd "${USERNAME}"
+else
+  log "Password already set for ${USERNAME} (skipping)."
+fi
 
 # ========= DOCKER =========
 if command -v docker &>/dev/null; then
@@ -139,7 +160,7 @@ fi
 log "Installing NVM + Node LTS + pnpm for user ${USERNAME} (robust mode)..."
 
 su - "${USERNAME}" -c '
-  set -euo pipefail
+  set -eo pipefail
 
   # Install NVM if missing
   if [[ ! -d "$HOME/.nvm" ]]; then
@@ -186,7 +207,7 @@ EOF
 if [[ "${INSTALL_GROK_CLI}" == "true" ]]; then
   log "Installing Grok CLI (pnpm global)..."
   su - "${USERNAME}" -c '
-    set -euo pipefail
+    set -eo pipefail
     export NVM_DIR="$HOME/.nvm"
     [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
     nvm use --lts >/dev/null
@@ -224,7 +245,7 @@ fi
 if [[ "${INSTALL_KIRO_CLI}" == "true" ]]; then
   log "Installing Kiro CLI..."
   su - "${USERNAME}" -c '
-    set -euo pipefail
+    set -eo pipefail
     curl -fsSL https://cli.kiro.dev/install | bash
     command -v kiro-cli >/dev/null || true
     kiro-cli --version || true
