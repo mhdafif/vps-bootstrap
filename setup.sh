@@ -4,8 +4,7 @@ set -euo pipefail
 log() { echo -e "\n==> $1"; }
 warn() { echo -e "\n[WARN] $1"; }
 
-# ========= LOAD CONFIG =========
-# You may keep env.conf optional. If missing, defaults are used.
+# ========= LOAD CONFIG (optional) =========
 if [[ -f "./env.conf" ]]; then
   # shellcheck disable=SC1091
   source ./env.conf
@@ -37,6 +36,9 @@ WEB_CMD="${WEB_CMD:-cd web && pnpm dev}"
 API_CMD="${API_CMD:-cd api && pnpm dev}"
 COMPOSE_CMD="${COMPOSE_CMD:-docker compose up -d}"
 LOGS_CMD="${LOGS_CMD:-docker compose logs -f --tail=200}"
+
+# Security toggles (recommended)
+HARDEN_SSH="${HARDEN_SSH:-false}"  # set true if you want to auto-disable SSH password login later
 
 # ========= ROOT CHECK =========
 if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
@@ -76,10 +78,19 @@ fi
 if id "${USERNAME}" &>/dev/null; then
   log "User ${USERNAME} already exists"
 else
-  log "Creating user ${USERNAME}..."
+  log "Creating user ${USERNAME} (SSH-key login recommended)..."
+  # Create user without setting a password automatically
   adduser --disabled-password --gecos "" "${USERNAME}"
-  usermod -aG sudo "${USERNAME}"
 fi
+
+# Ensure sudo group membership
+usermod -aG sudo "${USERNAME}"
+
+# ========= SET PASSWORD FOR SUDO =========
+# This is the critical piece to prevent lockout while still using sudo with password.
+log "Setting a password for ${USERNAME} (used for sudo)."
+log "You will be prompted to type a new password now."
+passwd "${USERNAME}"
 
 # ========= DOCKER =========
 if command -v docker &>/dev/null; then
@@ -124,36 +135,36 @@ if [[ "${INSTALL_TAILSCALE}" == "true" ]]; then
   systemctl enable --now tailscaled || true
 fi
 
-# ========= USER PHASE: NVM + NODE + PNPM + GROK =========
+# ========= USER PHASE: NVM + NODE + PNPM (robust) =========
 log "Installing NVM + Node LTS + pnpm for user ${USERNAME} (robust mode)..."
 
 su - "${USERNAME}" -c '
   set -euo pipefail
 
-  # 1) Install NVM if missing
+  # Install NVM if missing
   if [[ ! -d "$HOME/.nvm" ]]; then
     curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
   fi
 
-  # 2) Load NVM
+  # Load NVM
   export NVM_DIR="$HOME/.nvm"
   [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
-  # 3) Install and use Node LTS
+  # Install/use Node LTS
   nvm install --lts
   nvm use --lts
 
-  # 4) Enable pnpm via Corepack (comes with Node >=16.10+; on LTS it should exist)
+  # Enable pnpm via Corepack
   corepack enable
   corepack prepare pnpm@latest --activate
 
-  # 5) Make pnpm global bin dir deterministic (fixes ERR_PNPM_NO_GLOBAL_BIN_DIR)
+  # Fix pnpm global bin dir deterministically
   export PNPM_HOME="$HOME/.local/share/pnpm"
   mkdir -p "$PNPM_HOME"
   pnpm config set global-bin-dir "$PNPM_HOME"
   export PATH="$PNPM_HOME:$PATH"
 
-  # 6) Ensure PNPM_HOME is persisted in shell config
+  # Persist PNPM_HOME in bashrc
   BASHRC="$HOME/.bashrc"
   if ! grep -q "export PNPM_HOME=" "$BASHRC"; then
     cat >> "$BASHRC" <<'"'"'EOF'"'"'
@@ -167,7 +178,6 @@ esac
 EOF
   fi
 
-  # Verify basic tools
   node -v
   pnpm -v
 '
@@ -283,6 +293,20 @@ else
   printf "\n%s\n" "${TMUX_SNIPPET}" >> "${BASHRC_PATH}"
   chown "${USERNAME}:${USERNAME}" "${BASHRC_PATH}"
   log "tmux auto-session + layout snippet added"
+fi
+
+# ========= OPTIONAL SSH HARDENING =========
+if [[ "${HARDEN_SSH}" == "true" ]]; then
+  log "Hardening SSH (disabling password login & root login)..."
+  SSHD="/etc/ssh/sshd_config"
+  cp "${SSHD}" "${SSHD}.bak.$(date +%s)"
+
+  # ensure directives exist (append if missing)
+  grep -q "^PasswordAuthentication" "${SSHD}" && sed -i "s/^PasswordAuthentication.*/PasswordAuthentication no/" "${SSHD}" || echo "PasswordAuthentication no" >> "${SSHD}"
+  grep -q "^PermitRootLogin" "${SSHD}" && sed -i "s/^PermitRootLogin.*/PermitRootLogin no/" "${SSHD}" || echo "PermitRootLogin no" >> "${SSHD}"
+
+  systemctl restart ssh
+  warn "SSH hardened: PasswordAuthentication no, PermitRootLogin no"
 fi
 
 log "Bootstrap completed ✅"
