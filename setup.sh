@@ -22,12 +22,7 @@ SSH_PORT="${SSH_PORT:-22}"
 INSTALL_TAILSCALE="${INSTALL_TAILSCALE:-true}"
 INSTALL_FAIL2BAN="${INSTALL_FAIL2BAN:-true}"
 
-INSTALL_GROK_CLI="${INSTALL_GROK_CLI:-true}"
-GROK_BASE_URL="${GROK_BASE_URL:-https://api.z.ai/api/coding/paas/v4}"
-GROK_MODEL="${GROK_MODEL:-glm-4.7}"
-GROK_API_KEY="${GROK_API_KEY:-}"
-
-INSTALL_KIRO_CLI="${INSTALL_KIRO_CLI:-true}"
+INSTALL_OPENCODE_CLI="${INSTALL_OPENCODE_CLI:-true}"
 
 TMUX_SESSION="${TMUX_SESSION:-main}"
 PROJECT_DIR="${PROJECT_DIR:-/home/${USERNAME}/apps}"
@@ -203,9 +198,9 @@ EOF
   pnpm -v
 '
 
-# ========= GROK CLI (via pnpm) =========
-if [[ "${INSTALL_GROK_CLI}" == "true" ]]; then
-  log "Installing Grok CLI (pnpm global)..."
+# ========= OPENCODE CLI =========
+if [[ "${INSTALL_OPENCODE_CLI}" == "true" ]]; then
+  log "Installing OpenCode CLI..."
   su - "${USERNAME}" -c '
     set -eo pipefail
     export NVM_DIR="$HOME/.nvm"
@@ -215,43 +210,10 @@ if [[ "${INSTALL_GROK_CLI}" == "true" ]]; then
     export PNPM_HOME="$HOME/.local/share/pnpm"
     export PATH="$PNPM_HOME:$PATH"
 
-    pnpm add -g @vibe-kit/grok-cli
-    command -v grok >/dev/null
-    grok --help | head -n 5 || true
+    pnpm add -g opencode-cli
+    command -v opencode >/dev/null || true
+    opencode --version || true
   '
-
-  # Add Grok env vars to bashrc (API key only if provided)
-  BASHRC_PATH="/home/${USERNAME}/.bashrc"
-  if ! grep -q "GROK CLI (Z.AI / GLM)" "${BASHRC_PATH}"; then
-    log "Adding Grok env vars to ${BASHRC_PATH}..."
-    cat >> "${BASHRC_PATH}" <<EOF
-
-# --- GROK CLI (Z.AI / GLM) ---
-export GROK_BASE_URL="${GROK_BASE_URL}"
-export GROK_MODEL_DEFAULT="${GROK_MODEL}"
-EOF
-    if [[ -n "${GROK_API_KEY}" ]]; then
-      echo "export GROK_API_KEY=\"${GROK_API_KEY}\"" >> "${BASHRC_PATH}"
-    else
-      warn "GROK_API_KEY is empty. Fill it in env.conf then rerun ./setup.sh, or export manually before using grok."
-    fi
-    chown "${USERNAME}:${USERNAME}" "${BASHRC_PATH}"
-  else
-    log "Grok env snippet already exists in ${BASHRC_PATH}"
-  fi
-fi
-
-# ========= KIRO CLI =========
-if [[ "${INSTALL_KIRO_CLI}" == "true" ]]; then
-  log "Installing Kiro CLI..."
-  su - "${USERNAME}" -c '
-    set -eo pipefail
-    curl -fsSL https://cli.kiro.dev/install | bash
-    command -v kiro-cli >/dev/null || true
-    kiro-cli --version || true
-  '
-  warn "Kiro auth is usually interactive. After login:"
-  warn "  kiro-cli login"
 fi
 
 # ========= TMUX AUTO-SESSION + 4 PANE LAYOUT =========
@@ -285,7 +247,7 @@ __tmux_bootstrap_session() {
     tmux split-window -v -t "$SESSION":0 -c "$ROOT_DIR"
     tmux send-keys -t "$SESSION":0.2 "cd \"$ROOT_DIR\" && $COMPOSE && $LOGS" C-m
 
-    # Pane 3: shell (bottom-right) for grok/kiro
+    # Pane 3: shell (bottom-right) for opencode
     tmux select-pane -t "$SESSION":0.1
     tmux split-window -v -t "$SESSION":0 -c "$ROOT_DIR"
     tmux send-keys -t "$SESSION":0.3 "cd \"$ROOT_DIR\"" C-m
@@ -340,8 +302,6 @@ echo "2) (Optional) Tailscale auth (on VPS):"
 echo "   sudo tailscale up"
 echo "3) Create project dir if needed:"
 echo "   mkdir -p ${PROJECT_DIR}"
-echo "4) Grok usage (if API key configured):"
-echo "   grok --model \"${GROK_MODEL}\""
-echo "5) Kiro login:"
-echo "   kiro-cli login"
+echo "4) OpenCode usage:"
+echo "   opencode --help"
 echo
