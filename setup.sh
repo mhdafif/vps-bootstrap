@@ -21,6 +21,7 @@ SSH_PORT="${SSH_PORT:-22}"
 
 INSTALL_TAILSCALE="${INSTALL_TAILSCALE:-true}"
 INSTALL_FAIL2BAN="${INSTALL_FAIL2BAN:-true}"
+INSTALL_TMUX="${INSTALL_TMUX:-true}"
 
 INSTALL_OPENCODE_CLI="${INSTALL_OPENCODE_CLI:-true}"
 
@@ -56,13 +57,11 @@ timedatectl set-timezone "${TIMEZONE}"
 
 # ========= BASE PACKAGES =========
 log "Installing base packages..."
-apt install -y \
-  openssh-server \
-  ufw \
-  curl git \
-  htop net-tools \
-  ca-certificates gnupg lsb-release \
-  tmux
+BASE_PACKAGES="openssh-server ufw curl git htop net-tools ca-certificates gnupg lsb-release"
+if [[ "${INSTALL_TMUX}" == "true" ]]; then
+  BASE_PACKAGES="${BASE_PACKAGES} tmux"
+fi
+apt install -y ${BASE_PACKAGES}
 
 if [[ "${INSTALL_FAIL2BAN}" == "true" ]]; then
   log "Installing fail2ban..."
@@ -217,7 +216,8 @@ if [[ "${INSTALL_OPENCODE_CLI}" == "true" ]]; then
 fi
 
 # ========= TMUX AUTO-SESSION + 4 PANE LAYOUT =========
-log "Configuring tmux auto-session + 4-pane layout for ${USERNAME}..."
+if [[ "${INSTALL_TMUX}" == "true" ]]; then
+  log "Configuring tmux auto-session + 4-pane layout for ${USERNAME}..."
 
 BASHRC_PATH="/home/${USERNAME}/.bashrc"
 
@@ -276,6 +276,7 @@ else
   printf "\n%s\n" "${TMUX_SNIPPET}" >> "${BASHRC_PATH}"
   chown "${USERNAME}:${USERNAME}" "${BASHRC_PATH}"
   log "tmux auto-session + layout snippet added"
+fi
 fi
 
 # ========= OPTIONAL SSH HARDENING =========

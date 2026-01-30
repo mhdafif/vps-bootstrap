@@ -86,6 +86,7 @@ LOGS_CMD="docker compose logs -f --tail=200"
 INSTALL_OPENCODE_CLI=true         # Install OpenCode CLI
 INSTALL_TAILSCALE=true            # Install Tailscale VPN
 INSTALL_FAIL2BAN=true             # Install fail2ban
+INSTALL_TMUX=true                 # Install tmux and configure auto-session
 ```
 
 #### Security
