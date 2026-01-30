@@ -33,9 +33,10 @@ cp env.example env.conf
 nano env.conf
 ```
 
-### 3. Run the setup script as root
+### 3. Make the script executable and run as root
 
 ```bash
+sudo chmod +x setup.sh
 sudo -i
 cd /path/to/vps-bootstrap
 ./setup.sh
@@ -92,12 +93,14 @@ INSTALL_TMUX=true                 # Install tmux and configure auto-session
 #### Security
 
 ```bash
-HARDEN_SSH=false                  # Disable password auth & root login
+HARDEN_SSH=true                   # Disable password auth & root login (default: true)
 ```
+
+**Note**: All optional tools (`INSTALL_TAILSCALE`, `INSTALL_FAIL2BAN`, `INSTALL_TMUX`, `INSTALL_OPENCODE_CLI`) default to `true`.
 
 ## Tmux Layout
 
-The script creates a 4-pane tmux layout that auto-starts on SSH login:
+When `INSTALL_TMUX=true` (default), the script creates a 4-pane tmux layout that auto-starts on SSH login:
 
 ```
 ┌─────────────┬─────────────┐
@@ -116,6 +119,8 @@ The script creates a 4-pane tmux layout that auto-starts on SSH login:
 
 ## Post-Installation
 
+**Note**: The post-installation steps shown by the script are conditional based on your configuration (e.g., Tailscale instructions only show if `INSTALL_TAILSCALE=true`).
+
 ### 1. SSH into your user account
 
 ```bash
@@ -125,7 +130,7 @@ ssh aafif@<VPS_IP>
 ### 2. (Optional) Connect Tailscale
 
 ```bash
-sudo tailscale up
+sudo tailscale up --ssh
 ```
 
 ### 3. Create project directory
@@ -161,7 +166,10 @@ opencode
 ## Security Recommendations
 
 1. **Use Tailscale**: Set `ALLOW_SSH_PUBLIC=false` and access your VPS via Tailscale
-2. **Harden SSH**: After confirming you can login, set `HARDEN_SSH=true` and rerun
+2. **SSH Hardening**: The script defaults to `HARDEN_SSH=true`, which configures:
+   - `PasswordAuthentication no` (only SSH keys allowed)
+   - `PubkeyAuthentication yes` (explicit public key support)
+   - `PermitRootLogin no` (root cannot login via SSH)
 3. **Keep system updated**: Regularly run `apt update && apt upgrade`
 4. **Monitor fail2ban**: Check logs with `sudo fail2ban-client status sshd`
 
@@ -169,6 +177,7 @@ opencode
 
 ### Tmux session doesn't auto-start
 
+- Ensure `INSTALL_TMUX=true` in your config
 - Check that you're connecting via SSH (not console)
 - Verify the snippet in `~/.bashrc`
 

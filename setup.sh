@@ -16,12 +16,13 @@ TIMEZONE="${TIMEZONE:-Asia/Jakarta}"
 
 ALLOW_HTTP="${ALLOW_HTTP:-true}"
 ALLOW_HTTPS="${ALLOW_HTTPS:-true}"
-ALLOW_SSH_PUBLIC="${ALLOW_SSH_PUBLIC:-true}"
+
+ALLOW_SSH_PUBLIC="${ALLOW_SSH_PUBLIC:-false}"
 SSH_PORT="${SSH_PORT:-22}"
 
 INSTALL_TAILSCALE="${INSTALL_TAILSCALE:-true}"
 INSTALL_FAIL2BAN="${INSTALL_FAIL2BAN:-true}"
-INSTALL_TMUX="${INSTALL_TMUX:-true}"
+INSTALL_TMUX="${INSTALL_TMUX:-false}"
 
 INSTALL_OPENCODE_CLI="${INSTALL_OPENCODE_CLI:-true}"
 
@@ -34,7 +35,7 @@ COMPOSE_CMD="${COMPOSE_CMD:-docker compose up -d}"
 LOGS_CMD="${LOGS_CMD:-docker compose logs -f --tail=200}"
 
 # Security toggles (recommended)
-HARDEN_SSH="${HARDEN_SSH:-false}"  # set true if you want to auto-disable SSH password login later
+HARDEN_SSH="${HARDEN_SSH:-true}"  # set true if you want to auto-disable SSH password login later
 
 # ========= ROOT CHECK =========
 if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
@@ -287,22 +288,35 @@ if [[ "${HARDEN_SSH}" == "true" ]]; then
 
   # ensure directives exist (append if missing)
   grep -q "^PasswordAuthentication" "${SSHD}" && sed -i "s/^PasswordAuthentication.*/PasswordAuthentication no/" "${SSHD}" || echo "PasswordAuthentication no" >> "${SSHD}"
+  grep -q "^PubkeyAuthentication" "${SSHD}" && sed -i "s/^PubkeyAuthentication.*/PubkeyAuthentication yes/" "${SSHD}" || echo "PubkeyAuthentication yes" >> "${SSHD}"
   grep -q "^PermitRootLogin" "${SSHD}" && sed -i "s/^PermitRootLogin.*/PermitRootLogin no/" "${SSHD}" || echo "PermitRootLogin no" >> "${SSHD}"
 
   systemctl restart ssh
-  warn "SSH hardened: PasswordAuthentication no, PermitRootLogin no"
+  warn "SSH hardened: PasswordAuthentication no, PubkeyAuthentication yes, PermitRootLogin no"
 fi
 
 log "Bootstrap completed ✅"
 
 echo
 echo "Next steps:"
-echo "1) SSH into your user:"
-echo "   ssh ${USERNAME}@<VPS_IP>"
-echo "2) (Optional) Tailscale auth (on VPS):"
-echo "   sudo tailscale up"
-echo "3) Create project dir if needed:"
-echo "   mkdir -p ${PROJECT_DIR}"
-echo "4) OpenCode usage:"
-echo "   opencode --help"
+
+if [[ "${ALLOW_SSH_PUBLIC}" == "true" ]]; then
+  echo "1) SSH into your user:"
+  echo "   ssh ${USERNAME}@<VPS_IP>"
+fi
+
+if [[ "${INSTALL_TAILSCALE}" == "true" ]]; then
+  echo "2) (Optional) Tailscale auth (on VPS):"
+  echo "   sudo tailscale up --ssh"
+fi
+
+if [[ "${INSTALL_TMUX}" == "true" ]]; then
+  echo "3) Create project dir if needed:"
+  echo "   mkdir -p ${PROJECT_DIR}"
+fi
+
+if [[ "${INSTALL_OPENCODE_CLI}" == "true" ]]; then
+  echo "4) OpenCode usage:"
+  echo "   opencode --help"
+fi
 echo
